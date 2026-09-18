@@ -1,20 +1,18 @@
 import os
 import requests
-from database.db_connect import get_db
+from database.db_connect import get_db_url
 from core_upload.smart_fetcher import fetch_new_video
 from core_upload.history_checker import save_history
 
-def upload_to_facebook(page, video_data):
-    print(f"[*] Uploading to Facebook Page: {page['page_name']}...")
+def upload_to_facebook(page_val, video_data):
+    print(f"[*] Uploading to Facebook Page: {page_val['page_name']}...")
     
-    # Facebook Graph API (v18.0)
-    url = f"https://graph.facebook.com/v18.0/{page['page_id']}/videos"
+    url = f"https://graph.facebook.com/v18.0/{page_val['page_id']}/videos"
     
-    # সোর্সের অরিজিনাল টাইটেলটাই ক্যাপশন হিসেবে যাবে
     payload = {
         'title': video_data['title'],
         'description': video_data['title'],
-        'access_token': page['access_token']
+        'access_token': page_val['access_token']
     }
     
     try:
@@ -34,16 +32,22 @@ def upload_to_facebook(page, video_data):
         print(f"[-] Error during upload: {e}")
         return False
     finally:
-        # স্টোরেজ বাঁচাতে আপলোড শেষে ফাইল ডিলিট করে দেওয়া হবে
         if os.path.exists(video_data['filepath']):
             os.remove(video_data['filepath'])
 
 def run():
-    db = get_db()
-    if db is None: return
+    url = get_db_url()
+    if not url: return
     
-    mappings = list(db.mappings.find())
-    if not mappings:
+    try:
+        mappings_res = requests.get(f"{url}mappings.json").json() or {}
+        pages_res = requests.get(f"{url}pages.json").json() or {}
+        sources_res = requests.get(f"{url}sources.json").json() or {}
+    except Exception:
+        print("[-] Error fetching data from Firebase.")
+        return
+        
+    if not mappings_res:
         print("[-] No mappings found. Please map accounts from Option [6].")
         return
         
@@ -52,35 +56,35 @@ def run():
     print("===============================")
     
     # ম্যাপিং অনুযায়ী কাজ শুরু
-    for mapping in mappings:
-        page_id = mapping['page_id']
-        page = db.pages.find_one({"page_id": page_id})
-        
-        if not page: continue
+    for page_id_str, mapping in mappings_res.items():
+        # পেজের বিস্তারিত ডেটা খুঁজে বের করা
+        page_val = None
+        for p_key, p_val in pages_res.items():
+            if p_val['page_id'] == page_id_str:
+                page_val = p_val
+                break
+                
+        if not page_val: continue
         
         print(f"\n=============================================")
-        print(f"[*] Processing FB Page: {page['page_name']}")
+        print(f"[*] Processing FB Page: {page_val['page_name']}")
         print(f"=============================================")
         
-        for source_id in mapping['source_ids']:
-            from bson.objectid import ObjectId
-            source = db.sources.find_one({"_id": ObjectId(source_id)})
-            if not source: continue
+        for source_key in mapping.get('source_ids', []):
+            source_val = sources_res.get(source_key)
+            if not source_val: continue
             
-            # লেটেস্ট আনকোরা ভিডিও খুঁজে ডাউনলোড করা
-            video_data = fetch_new_video(source)
+            video_data = fetch_new_video(source_key, source_val)
             
             if video_data:
-                # ভিডিওটি ফেসবুকে আপলোড করা
-                success = upload_to_facebook(page, video_data)
+                success = upload_to_facebook(page_val, video_data)
                 
                 if success:
-                    # সফল হলে হিস্ট্রিতে সেভ করা
-                    save_history(source_id, video_data['video_id'], video_data['title'])
+                    save_history(source_key, video_data['video_id'], video_data['title'])
                     print("[+] Done for this source.\n")
                 else:
                     print("[-] Upload failed. Will retry next time.\n")
             else:
-                print(f"[*] Skipping source {source['account_name']}, no new videos found.\n")
+                print(f"[*] Skipping source {source_val['account_name']}, no new videos found.\n")
     
     print("[*] All mappings processed successfully!")
