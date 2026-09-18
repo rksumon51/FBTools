@@ -2,12 +2,12 @@ import os
 import sys
 import subprocess
 
-# আমরা যে দুটি ফাইল তৈরি করেছি, সেগুলোর ইম্পোর্ট
 from database import db_connect
 from managers import page_manager
+from managers import source_manager
+from managers import mapping_manager
 
 # পরবর্তী ধাপে এই ফাইলগুলো তৈরি করা হবে
-# from managers import source_manager, mapping_manager
 # from core_upload import upload_live, upload_schedule
 
 MONGO_CONNECTED = False 
@@ -68,26 +68,19 @@ def main_menu():
                 input("Press Enter...")
         elif choice == '3':
             print("[*] Connecting to MongoDB Atlas...")
-            # এখানে রিয়েল ডাটাবেস কানেকশন কল করা হয়েছে
             MONGO_CONNECTED = db_connect.connect()
             if MONGO_CONNECTED:
                 print("[+] Database Connected Successfully!")
             input("Press Enter...")
         elif choice == '4':
             if check_connection():
-                print("[*] Opening Page Manager...")
-                # এখানে রিয়েল পেজ ম্যানেজার কল করা হয়েছে
                 page_manager.menu() 
         elif choice == '5':
             if check_connection():
-                print("[*] Opening Source Manager...")
-                # source_manager.menu()
-                input("Press Enter...")
+                source_manager.menu()
         elif choice == '6':
             if check_connection():
-                print("[*] Opening Mapping Manager...")
-                # mapping_manager.menu()
-                input("Press Enter...")
+                mapping_manager.menu()
         elif choice == '7':
             update_tool()
         elif choice == '0':
