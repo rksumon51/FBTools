@@ -1,8 +1,9 @@
-from database.db_connect import get_db
+import requests
+from database.db_connect import get_db_url
 
 def add_page():
-    db = get_db()
-    if db is None: return
+    url = get_db_url()
+    if not url: return
     
     print("\n--- Add New Facebook Page ---")
     page_name = input("Enter Page Name: ").strip()
@@ -14,34 +15,48 @@ def add_page():
         return
         
     # চেক করে দেখবে এই পেজ আইডিটি আগে থেকেই ডাটাবেসে আছে কি না
-    if db.pages.find_one({"page_id": page_id}):
-        print(f"[-] Page with ID '{page_id}' already exists in database!")
-        return
+    try:
+        res = requests.get(f"{url}pages.json").json()
+        if res:
+            for key, val in res.items():
+                if val.get('page_id') == page_id:
+                    print(f"[-] Page with ID '{page_id}' already exists in database!")
+                    return
+    except Exception:
+        pass
         
     # ডাটাবেসে নতুন পেজ সেভ করা
-    db.pages.insert_one({
+    data = {
         "page_name": page_name,
         "page_id": page_id,
         "access_token": access_token
-    })
-    print(f"[+] Page '{page_name}' added successfully to MongoDB!")
+    }
+    requests.post(f"{url}pages.json", json=data)
+    print(f"[+] Page '{page_name}' added successfully to Firebase!")
 
 def view_pages():
-    db = get_db()
-    if db is None: return []
+    url = get_db_url()
+    if not url: return []
     
-    pages = list(db.pages.find())
-    print("\n--- Saved Facebook Pages ---")
-    if not pages:
-        print("[-] No pages found. Please add a page first.")
+    try:
+        res = requests.get(f"{url}pages.json").json()
+        print("\n--- Saved Facebook Pages ---")
+        if not res:
+            print("[-] No pages found. Please add a page first.")
+            return []
+            
+        pages = []
+        for idx, (key, val) in enumerate(res.items(), 1):
+            print(f"[{idx}] {val['page_name']} (ID: {val['page_id']})")
+            # ডিলিট করার সুবিধার জন্য ফায়ারবেসের ইউনিক কি (key) সহ সেভ রাখা হচ্ছে
+            pages.append((key, val))
+        return pages
+    except Exception as e:
+        print("[-] Error fetching pages from Firebase.")
         return []
-        
-    for idx, page in enumerate(pages, 1):
-        print(f"[{idx}] {page['page_name']} (ID: {page['page_id']})")
-    return pages
     
 def delete_page():
-    db = get_db()
+    url = get_db_url()
     pages = view_pages()
     if not pages: return
     
@@ -49,11 +64,10 @@ def delete_page():
         choice = int(input("\nEnter the number of the page to delete (0 to cancel): "))
         if choice == 0: return
         if 1 <= choice <= len(pages):
-            selected_page = pages[choice-1]
+            selected_key, selected_page = pages[choice-1]
+            
             # ডাটাবেস থেকে পেজ ডিলিট করা
-            db.pages.delete_one({"_id": selected_page['_id']})
-            # এই পেজের সাথে লিংক করা কোনো ম্যাপিং থাকলে সেটাও ডিলিট করে দেওয়া
-            db.mappings.delete_many({"page_id": selected_page['page_id']})
+            requests.delete(f"{url}pages/{selected_key}.json")
             print(f"[+] Page '{selected_page['page_name']}' deleted successfully!")
         else:
             print("[-] Invalid selection.")
