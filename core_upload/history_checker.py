@@ -1,24 +1,27 @@
-from database.db_connect import get_db
+import requests
+from database.db_connect import get_db_url
 
-def is_uploaded(source_id, video_id):
-    db = get_db()
-    if db is None: return False
-    
-    # ডাটাবেসে চেক করা হচ্ছে এই সোর্স থেকে ভিডিওটি আগে আপলোড হয়েছে কি না
-    record = db.history.find_one({
-        "source_id": str(source_id), 
-        "video_id": str(video_id)
-    })
-    return True if record else False
+def safe_key(key):
+    return str(key).replace('.', '_').replace('#', '_').replace('$', '_').replace('[', '_').replace(']', '_')
 
-def save_history(source_id, video_id, title):
-    db = get_db()
-    if db is None: return
+def is_uploaded(source_key, video_id):
+    url = get_db_url()
+    if not url: return False
     
-    # আপলোড সফল হলে ডাটাবেসে টাইটেল সহ সেভ করা
-    db.history.insert_one({
-        "source_id": str(source_id),
-        "video_id": str(video_id),
-        "title": title
-    })
-    print(f"[+] Saved to Database History: {title}")
+    v_id = safe_key(video_id)
+    try:
+        res = requests.get(f"{url}history/{source_key}/{v_id}.json").json()
+        return True if res else False
+    except Exception:
+        return False
+
+def save_history(source_key, video_id, title):
+    url = get_db_url()
+    if not url: return
+    
+    v_id = safe_key(video_id)
+    try:
+        requests.put(f"{url}history/{source_key}/{v_id}.json", json={"title": title})
+        print(f"[+] Saved to Firebase History: {title}")
+    except Exception as e:
+        print(f"[-] Failed to save history: {e}")
