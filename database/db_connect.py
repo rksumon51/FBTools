@@ -1,61 +1,57 @@
 import os
 import json
-import pymongo
-from pymongo.errors import ConnectionFailure
+import requests
 
-# লোকাল ফাইল যেখানে MongoDB URI সেভ থাকবে (যাতে বারবার দিতে না হয়)
-# এই ফাইলটি .gitignore এ থাকায় গিটহাবে আপলোড হবে না
 CONFIG_FILE = 'db_config.json'
-client = None
-db = None
+firebase_url = None
 
-def get_uri():
+def get_url():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
-            return data.get('mongo_uri')
+            return data.get('firebase_url')
     return None
 
-def save_uri(uri):
+def save_url(url):
     with open(CONFIG_FILE, 'w') as f:
-        json.dump({'mongo_uri': uri}, f)
+        json.dump({'firebase_url': url}, f)
 
 def connect():
-    global client, db
+    global firebase_url
+    url = get_url()
     
-    uri = get_uri()
-    
-    # যদি আগে থেকে লিংক সেভ করা না থাকে, তবে ইউজারের কাছে চাইবে
-    if not uri:
-        print("\n[!] MongoDB URI is not configured yet.")
-        uri = input("Enter your MongoDB Atlas Connection String (URI): ").strip()
-        if not uri:
-            print("[-] URI cannot be empty.")
+    if not url:
+        print("\n[!] Firebase URL is not configured yet.")
+        print("Example: https://your-project-default-rtdb.firebaseio.com/")
+        url = input("Enter your Firebase Realtime Database URL: ").strip()
+        if not url:
+            print("[-] URL cannot be empty.")
             return False
             
+    # URL এর শেষে '/' না থাকলে যোগ করে দেওয়া
+    if not url.endswith('/'):
+        url += '/'
+        
     try:
-        print("[*] Trying to connect to MongoDB Atlas...")
-        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000)
-        # কানেকশন ঠিক আছে কি না তা চেক করা
-        client.admin.command('ping')
+        print("[*] Trying to connect to Firebase Cloud...")
+        # ফায়ারবেসের সাথে কানেকশন টেস্ট করা
+        response = requests.get(url + '.json')
         
-        # আপনার ডাটাবেসের নাম 'fb_auto_tools' রাখা হলো
-        db = client['fb_auto_tools']
-        
-        # কানেকশন সফল হলে ভবিষ্যতে ব্যবহারের জন্য URI সেভ করে রাখা
-        save_uri(uri)
-        return True
-        
-    except ConnectionFailure:
-        print("[-] Connection failed! Please check your URI or Internet connection.")
-        # ভুল লিংক হলে ফাইলটি ডিলিট করে দেবে, যাতে পরের বার আবার নতুন লিংক চায়
-        if os.path.exists(CONFIG_FILE):
-            os.remove(CONFIG_FILE) 
-        return False
+        if response.status_code == 200 or response.status_code == 401:
+            firebase_url = url
+            save_url(url)
+            return True
+        else:
+            print(f"[-] Connection failed. Status code: {response.status_code}")
+            if os.path.exists(CONFIG_FILE):
+                os.remove(CONFIG_FILE)
+            return False
     except Exception as e:
         print(f"[-] An error occurred: {e}")
+        if os.path.exists(CONFIG_FILE):
+            os.remove(CONFIG_FILE)
         return False
 
-# অন্যান্য ফাইল থেকে ডাটাবেস এক্সেস করার জন্য এই ফাংশনটি কল করতে হবে
-def get_db():
-    return db
+# অন্যান্য ফাইল থেকে ফায়ারবেস URL পাওয়ার জন্য
+def get_db_url():
+    return firebase_url
