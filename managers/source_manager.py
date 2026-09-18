@@ -1,8 +1,9 @@
-from database.db_connect import get_db
+import requests
+from database.db_connect import get_db_url
 
 def add_source():
-    db = get_db()
-    if db is None: return
+    url = get_db_url()
+    if not url: return
     
     print("\n--- Add New Source Account ---")
     platform = input("Enter Platform (e.g., TikTok / YT): ").strip().upper()
@@ -13,33 +14,46 @@ def add_source():
         print("[-] All fields are required!")
         return
         
-    if db.sources.find_one({"profile_url": profile_url}):
-        print("[-] This account URL is already added!")
-        return
+    try:
+        res = requests.get(f"{url}sources.json").json()
+        if res:
+            for key, val in res.items():
+                if val.get('profile_url') == profile_url:
+                    print("[-] This account URL is already added!")
+                    return
+    except Exception:
+        pass
         
-    db.sources.insert_one({
+    data = {
         "platform": platform,
         "account_name": account_name,
         "profile_url": profile_url
-    })
+    }
+    requests.post(f"{url}sources.json", json=data)
     print(f"[+] {platform} Account '{account_name}' added successfully!")
 
 def view_sources():
-    db = get_db()
-    if db is None: return []
+    url = get_db_url()
+    if not url: return []
     
-    sources = list(db.sources.find())
-    print("\n--- Saved Source Accounts ---")
-    if not sources:
-        print("[-] No sources found. Please add a TikTok or YT account first.")
+    try:
+        res = requests.get(f"{url}sources.json").json()
+        print("\n--- Saved Source Accounts ---")
+        if not res:
+            print("[-] No sources found. Please add an account first.")
+            return []
+            
+        sources = []
+        for idx, (key, val) in enumerate(res.items(), 1):
+            print(f"[{idx}] {val['platform']} | {val['account_name']} ({val['profile_url']})")
+            sources.append((key, val))
+        return sources
+    except Exception as e:
+        print("[-] Error fetching sources from Firebase.")
         return []
-        
-    for idx, src in enumerate(sources, 1):
-        print(f"[{idx}] {src['platform']} | {src['account_name']} ({src['profile_url']})")
-    return sources
     
 def delete_source():
-    db = get_db()
+    url = get_db_url()
     sources = view_sources()
     if not sources: return
     
@@ -47,8 +61,8 @@ def delete_source():
         choice = int(input("\nEnter the number of the account to delete (0 to cancel): "))
         if choice == 0: return
         if 1 <= choice <= len(sources):
-            selected_source = sources[choice-1]
-            db.sources.delete_one({"_id": selected_source['_id']})
+            selected_key, selected_source = sources[choice-1]
+            requests.delete(f"{url}sources/{selected_key}.json")
             print(f"[+] Account '{selected_source['account_name']}' deleted successfully!")
         else:
             print("[-] Invalid selection.")
