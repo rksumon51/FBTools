@@ -2,13 +2,15 @@ import os
 import sys
 import subprocess
 
+# ডাটাবেস ও ম্যানেজার ইম্পোর্ট
 from database import db_connect
 from managers import page_manager
 from managers import source_manager
 from managers import mapping_manager
 
-# পরবর্তী ধাপে এই ফাইলগুলো তৈরি করা হবে
-# from core_upload import upload_live, upload_schedule
+# আপলোড মডিউল ইম্পোর্ট
+from core_upload import upload_live
+# from core_upload import upload_schedule # এটি পরবর্তী ধাপে তৈরি হবে
 
 MONGO_CONNECTED = False 
 
@@ -59,7 +61,7 @@ def main_menu():
         if choice == '1':
             if check_connection():
                 print("[*] Loading Live Upload Module...")
-                # upload_live.run()
+                upload_live.run()
                 input("Press Enter...")
         elif choice == '2':
             if check_connection():
