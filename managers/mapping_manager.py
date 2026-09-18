@@ -1,33 +1,42 @@
-from database.db_connect import get_db
+import requests
+from database.db_connect import get_db_url
 
 def create_mapping():
-    db = get_db()
-    if db is None: return
+    url = get_db_url()
+    if not url: return
     
-    pages = list(db.pages.find())
-    sources = list(db.sources.find())
-    
-    if not pages:
+    try:
+        pages_res = requests.get(f"{url}pages.json").json() or {}
+        sources_res = requests.get(f"{url}sources.json").json() or {}
+    except Exception:
+        print("[-] Error connecting to Firebase.")
+        return
+        
+    if not pages_res:
         print("[-] No Facebook pages found. Add a page first from Option [4].")
         return
-    if not sources:
+    if not sources_res:
         print("[-] No source accounts found. Add an account first from Option [5].")
         return
         
+    pages = list(pages_res.items())
+    sources = list(sources_res.items())
+    
     print("\n--- Select a Facebook Page ---")
-    for idx, page in enumerate(pages, 1):
-        print(f"[{idx}] {page['page_name']} (ID: {page['page_id']})")
+    for idx, (p_key, p_val) in enumerate(pages, 1):
+        print(f"[{idx}] {p_val['page_name']} (ID: {p_val['page_id']})")
         
     try:
         p_choice = int(input("\nSelect Page Number: "))
         if p_choice < 1 or p_choice > len(pages):
             print("[-] Invalid selection.")
             return
-        selected_page = pages[p_choice-1]
+        selected_page_key, selected_page_val = pages[p_choice-1]
+        page_id_str = selected_page_val['page_id']
         
         print("\n--- Select Source Accounts to Link ---")
-        for idx, src in enumerate(sources, 1):
-            print(f"[{idx}] {src['platform']} | {src['account_name']}")
+        for idx, (s_key, s_val) in enumerate(sources, 1):
+            print(f"[{idx}] {s_val['platform']} | {s_val['account_name']}")
             
         print("\n(You can select multiple by using commas, e.g., 1,3)")
         s_choices = input("Select Source Numbers: ").split(',')
@@ -36,47 +45,51 @@ def create_mapping():
         for sc in s_choices:
             sc = sc.strip()
             if sc.isdigit() and 1 <= int(sc) <= len(sources):
-                selected_source_ids.append(str(sources[int(sc)-1]['_id']))
+                selected_source_ids.append(sources[int(sc)-1][0])
                 
         if not selected_source_ids:
             print("[-] No valid sources selected.")
             return
             
-        # ডাটাবেসে সেভ বা আপডেট করা
-        db.mappings.update_one(
-            {"page_id": selected_page['page_id']},
-            {
-                "$set": {
-                    "page_name": selected_page['page_name'], 
-                    "source_ids": selected_source_ids
-                }
-            },
-            upsert=True
-        )
-        print(f"\n[+] Successfully linked {len(selected_source_ids)} source(s) to Page '{selected_page['page_name']}'!")
+        # Firebase এ ম্যাপিং সেভ করা (page_id কে মেইন 'কি' হিসেবে ব্যবহার করে)
+        mapping_data = {
+            "page_name": selected_page_val['page_name'],
+            "source_ids": selected_source_ids
+        }
+        requests.patch(f"{url}mappings.json", json={page_id_str: mapping_data})
+        print(f"\n[+] Successfully linked {len(selected_source_ids)} source(s) to Page '{selected_page_val['page_name']}'!")
         
     except ValueError:
         print("[-] Invalid input. Please enter numbers.")
 
 def view_mappings():
-    db = get_db()
-    if db is None: return []
+    url = get_db_url()
+    if not url: return []
     
-    mappings = list(db.mappings.find())
+    try:
+        mappings_res = requests.get(f"{url}mappings.json").json() or {}
+        sources_res = requests.get(f"{url}sources.json").json() or {}
+    except Exception:
+        print("[-] Error fetching data from Firebase.")
+        return []
+        
     print("\n--- Current Account Links (Mappings) ---")
-    if not mappings:
+    if not mappings_res:
         print("[-] No links found.")
         return []
         
-    for idx, mapping in enumerate(mappings, 1):
-        print(f"\n[{idx}] FB Page: {mapping['page_name']}")
+    idx = 1
+    for page_id, mapping in mappings_res.items():
+        print(f"\n[{idx}] FB Page: {mapping.get('page_name', 'Unknown')}")
         print("    Linked Sources:")
-        for src_id in mapping['source_ids']:
-            from bson.objectid import ObjectId
-            src = db.sources.find_one({"_id": ObjectId(src_id)})
+        for src_key in mapping.get('source_ids', []):
+            src = sources_res.get(src_key)
             if src:
                 print(f"      - {src['platform']} | {src['account_name']}")
-    return mappings
+            else:
+                print(f"      - [Deleted Source]")
+        idx += 1
+    return mappings_res
 
 def menu():
     while True:
