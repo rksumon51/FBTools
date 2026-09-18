@@ -10,7 +10,7 @@ from managers import mapping_manager
 
 # আপলোড মডিউল ইম্পোর্ট
 from core_upload import upload_live
-# from core_upload import upload_schedule # এটি পরবর্তী ধাপে তৈরি হবে
+from core_upload import upload_schedule
 
 MONGO_CONNECTED = False 
 
@@ -66,7 +66,7 @@ def main_menu():
         elif choice == '2':
             if check_connection():
                 print("[*] Loading Scheduled Upload Module...")
-                # upload_schedule.run()
+                upload_schedule.run()
                 input("Press Enter...")
         elif choice == '3':
             print("[*] Connecting to MongoDB Atlas...")
